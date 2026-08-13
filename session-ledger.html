@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ledger — searchable session transcripts</title>
+<style>
+  :root{
+    --ink:#161d29;
+    --ink-2:#1f2937;
+    --paper:#f4ecda;
+    --paper-dim:#cbbf9e;
+    --gold:#d4a24c;
+    --gold-dim:#8a6d34;
+    --sage:#7c9885;
+    --line:#33415a;
+    --text:#ece4cf;
+    --text-dim:#9aa5b8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Iowan Old Style','Georgia',serif;
+    min-height:100vh;
+  }
+  .app{
+    display:grid;
+    grid-template-columns:280px 1fr;
+    min-height:100vh;
+  }
+  @media (max-width:720px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{display:none;}
+    .sidebar.open{display:block;}
+  }
+
+  /* Sidebar */
+  .sidebar{
+    background:var(--ink-2);
+    border-right:1px solid var(--line);
+    padding:24px 18px;
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+  }
+  .brand{
+    font-family:'Times New Roman', serif;
+    font-size:15px;
+    letter-spacing:0.22em;
+    text-transform:uppercase;
+    color:var(--gold);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+  }
+  .brand small{color:var(--text-dim);letter-spacing:0.1em;font-size:10px;}
+  .session-list{
+    list-style:none;
+    margin:0;padding:0;
+    display:flex;flex-direction:column;
+    gap:2px;
+    overflow-y:auto;
+  }
+  .session-list li{
+    padding:10px 10px;
+    border-radius:2px;
+    cursor:pointer;
+    font-size:14px;
+    color:var(--text-dim);
+    border-left:2px solid transparent;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .session-list li .num{
+    color:var(--gold-dim);
+    font-variant-numeric:tabular-nums;
+    margin-right:8px;
+    font-size:12px;
+  }
+  .session-list li:hover{background:rgba(212,162,76,0.07); color:var(--text);}
+  .session-list li.active{
+    background:rgba(212,162,76,0.12);
+    border-left-color:var(--gold);
+    color:var(--text);
+  }
+  .session-list li .date{
+    display:block;
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:2px;
+    margin-left:20px;
+  }
+  .empty-note{
+    font-size:12px;
+    color:var(--text-dim);
+    font-style:italic;
+    line-height:1.5;
+  }
+
+  /* Main */
+  main{
+    padding:32px 40px 60px;
+    max-width:840px;
+  }
+  .topbar{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-bottom:28px;
+  }
+  .search-wrap{
+    flex:1;
+    min-width:220px;
+    position:relative;
+  }
+  .search-wrap input{
+    width:100%;
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:11px 14px 11px 34px;
+    border-radius:3px;
+    font-family:inherit;
+    font-size:14px;
+  }
+  .search-wrap input:focus{outline:1px solid var(--gold); border-color:var(--gold);}
+  .search-wrap::before{
+    content:"⌕";
+    position:absolute;
+    left:12px; top:50%; transform:translateY(-50%);
+    color:var(--text-dim);
+    font-size:16px;
+  }
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:none;
+    border-radius:3px;
+    padding:11px 18px;
+    font-size:13px;
+    letter-spacing:0.04em;
+  }
+  .btn-record{
+    background:var(--gold);
+    color:#1b1406;
+    font-weight:600;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .btn-record.recording{
+    background:#c0533f;
+    color:#2a0d08;
+  }
+  .btn-ghost{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+  }
+  .btn-ghost:hover{border-color:var(--gold-dim); color:var(--text);}
+
+  .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:#1b1406;
+  }
+  .recording .dot{
+    background:#2a0d08;
+    animation:pulse 1s infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+
+  .waveform{
+    display:flex; align-items:center; gap:2px; height:16px;
+  }
+  .waveform span{
+    display:inline-block; width:2px; background:#2a0d08; height:4px;
+    animation:wave 900ms ease-in-out infinite;
+  }
+  .waveform span:nth-child(2){animation-delay:.1s;}
+  .waveform span:nth-child(3){animation-delay:.2s;}
+  .waveform span:nth-child(4){animation-delay:.3s;}
+  .waveform span:nth-child(5){animation-delay:.4s;}
+  @keyframes wave{
+    0%,100%{height:4px;}
+    50%{height:14px;}
+  }
+
+  .card{
+    background:var(--paper);
+    color:#241d0f;
+    border-radius:4px;
+    padding:26px 30px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.35);
+  }
+  .card h1{
+    font-size:22px;
+    margin:0 0 4px;
+    font-weight:600;
+  }
+  .card .meta{
+    font-size:12px;
+    color:var(--gold-dim);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    margin-bottom:18px;
+  }
+  .transcript{
+    font-size:15.5px;
+    line-height:1.75;
+    white-space:pre-wrap;
+    min-height:120px;
+    border:1px solid transparent;
+  }
+  .transcript[contenteditable="true"]:focus{
+    outline:none;
+    border-bottom:1px dashed var(--gold-dim);
+  }
+  .transcript mark{
+    background:var(--gold);
+    color:#1b1406;
+    padding:0 2px;
+    border-radius:2px;
+  }
+  .placeholder{
+    color:#8a7f5f;
+    font-style:italic;
+  }
+  .card-footer{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:20px;
+    padding-top:14px;
+    border-top:1px solid var(--paper-dim);
+    font-size:12px;
+    color:#8a7f5f;
+  }
+  .rename-input{
+    font-family:inherit;
+    font-size:22px;
+    font-weight:600;
+    border:none;
+    border-bottom:1px solid var(--gold-dim);
+    background:transparent;
+    color:#241d0f;
+    width:100%;
+    margin-bottom:4px;
+    padding:2px 0;
+  }
+  .rename-input:focus{outline:none;}
+
+  .search-results{
+    margin-top:24px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .result-card{
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:16px 18px;
+    cursor:pointer;
+  }
+  .result-card:hover{border-color:var(--gold-dim);}
+  .result-card .title{
+    font-size:13px;
+    color:var(--gold);
+    letter-spacing:0.03em;
+    margin-bottom:6px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .result-card .snippet{
+    font-size:13.5px;
+    color:var(--text-dim);
+    line-height:1.6;
+  }
+  .result-card mark{
+    background:var(--gold);
+    color:#1b1406;
+    padding:0 2px;
+    border-radius:2px;
+  }
+
+  .hint{
+    font-size:12px;
+    color:var(--text-dim);
+    margin-top:10px;
+    line-height:1.6;
+  }
+  .hint b{color:var(--gold-dim);}
+
+  .status{
+    font-size:12px;
+    color:var(--text-dim);
+    margin-left:4px;
+  }
+
+  .top-actions{display:flex; gap:8px; align-items:center;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Ledger <small>v0.1</small></div>
+    <button class="btn-ghost" id="newSessionBtn" style="text-align:left;">+ New session</button>
+    <ul class="session-list" id="sessionList"></ul>
+    <div class="empty-note" id="emptyNote">No sessions yet. Record one or start typing to create your first entry.</div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div class="search-wrap">
+        <input id="searchInput" type="text" placeholder="Search everything you've ever said…" autocomplete="off">
+      </div>
+      <div class="top-actions">
+        <button class="btn-record" id="recordBtn">
+          <span class="dot"></span> <span id="recordLabel">Record</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="mainContent"></div>
+  </main>
+</div>
+
+<script>
+(function(){
+  let sessions = [];      // {id, title, date, transcript}
+  let activeId = null;
+  let recognizing = false;
+  let recognition = null;
+  let sttSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const sessionListEl = document.getElementById('sessionList');
+  const emptyNoteEl = document.getElementById('emptyNote');
+  const mainContentEl = document.getElementById('mainContent');
+  const searchInput = document.getElementById('searchInput');
+  const recordBtn = document.getElementById('recordBtn');
+  const recordLabel = document.getElementById('recordLabel');
+  const newSessionBtn = document.getElementById('newSessionBtn');
+
+  const STORE_KEY = 'ledger:sessions';
+
+  function uid(){ return 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+  function fmtDate(iso){
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) +
+      ' · ' + d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+  function highlight(text, query){
+    if(!query) return escapeHtml(text);
+    const esc = escapeHtml(text);
+    const q = query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return esc.replace(new RegExp('('+q+')','ig'), '<mark>$1</mark>');
+  }
+
+  async function load(){
+    try{
+      const res = await window.storage.get(STORE_KEY, false);
+      sessions = res && res.value ? JSON.parse(res.value) : [];
+    }catch(e){
+      sessions = [];
+    }
+    if(sessions.length && !activeId) activeId = sessions[0].id;
+  }
+  async function persist(){
+    try{ await window.storage.set(STORE_KEY, JSON.stringify(sessions), false); }
+    catch(e){ console.error('save failed', e); }
+  }
+
+  function newSession(){
+    const s = { id: uid(), title:'Untitled session', date: new Date().toISOString(), transcript:'' };
+    sessions.unshift(s);
+    activeId = s.id;
+    persist();
+    render();
+    setTimeout(()=>{
+      const titleInput = document.querySelector('.rename-input');
+      if(titleInput){ titleInput.focus(); titleInput.select(); }
+    },0);
+  }
+
+  function renderSidebar(){
+    sessionListEl.innerHTML = '';
+    emptyNoteEl.style.display = sessions.length ? 'none' : 'block';
+    sessions.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.className = s.id === activeId ? 'active' : '';
+      const num = String(sessions.length - i).padStart(2,'0');
+      li.innerHTML = `<span class="num">${num}</span>${escapeHtml(s.title || 'Untitled session')}<span class="date">${fmtDate(s.date)}</span>`;
+      li.addEventListener('click', () => { activeId = s.id; searchInput.value=''; render(); });
+      sessionListEl.appendChild(li);
+    });
+  }
+
+  function renderSession(s){
+    mainContentEl.innerHTML = `
+      <div class="card">
+        <input class="rename-input" id="titleInput" value="${escapeHtml(s.title)}" placeholder="Session title">
+        <div class="meta">${fmtDate(s.date)}</div>
+        <div class="transcript" id="transcriptEl" contenteditable="true" data-placeholder="Start speaking, or click here to type or paste a transcript…"></div>
+        <div class="card-footer">
+          <span id="wordCount"></span>
+          <button class="btn-ghost" id="deleteBtn">Delete session</button>
+        </div>
+      </div>
+      <div class="hint"><b>Rough MVP note —</b> transcripts save automatically as you type or record. Live dictation uses your browser's built-in speech recognition${sttSupported ? '' : ' (not supported in this browser — paste text instead)'}.</div>
+    `;
+    const transcriptEl = document.getElementById('transcriptEl');
+    transcriptEl.textContent = s.transcript || '';
+    if(!s.transcript){ transcriptEl.classList.add('placeholder'); transcriptEl.textContent = transcriptEl.dataset.placeholder; }
+    updateWordCount(s.transcript || '');
+
+    transcriptEl.addEventListener('focus', () => {
+      if(transcriptEl.classList.contains('placeholder')){
+        transcriptEl.classList.remove('placeholder');
+        transcriptEl.textContent = '';
+      }
+    });
+    transcriptEl.addEventListener('blur', () => {
+      const val = transcriptEl.textContent;
+      if(!val.trim()){
+        transcriptEl.classList.add('placeholder');
+        transcriptEl.textContent = transcriptEl.dataset.placeholder;
+      }
+    });
+    transcriptEl.addEventListener('input', () => {
+      s.transcript = transcriptEl.classList.contains('placeholder') ? '' : transcriptEl.textContent;
+      updateWordCount(s.transcript);
+      persist();
+      renderSidebar();
+    });
+
+    document.getElementById('titleInput').addEventListener('input', (e) => {
+      s.title = e.target.value;
+      persist();
+      renderSidebar();
+    });
+    document.getElementById('deleteBtn').addEventListener('click', () => {
+      sessions = sessions.filter(x => x.id !== s.id);
+      activeId = sessions.length ? sessions[0].id : null;
+      persist();
+      render();
+    });
+  }
+
+  function updateWordCount(text){
+    const el = document.getElementById('wordCount');
+    if(!el) return;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    el.textContent = words + (words === 1 ? ' word' : ' words');
+  }
+
+  function renderEmptyState(){
+    mainContentEl.innerHTML = `
+      <div class="card">
+        <h1 style="margin-bottom:10px;">Nothing here yet</h1>
+        <p class="placeholder" style="margin:0;">Record a session or click "+ New session" to write one down. Every session becomes searchable the moment you save it.</p>
+      </div>
+    `;
+  }
+
+  function renderSearch(query){
+    const q = query.trim();
+    const matches = sessions.filter(s => (s.title + ' ' + s.transcript).toLowerCase().includes(q.toLowerCase()));
+    let html = `<div class="hint" style="margin-bottom:6px;">${matches.length} session${matches.length===1?'':'s'} match "${escapeHtml(q)}"</div><div class="search-results">`;
+    if(!matches.length){
+      html += `<div class="placeholder" style="font-size:14px;">No matches. Try a different word.</div>`;
+    }
+    matches.forEach(s => {
+      const idx = s.transcript.toLowerCase().indexOf(q.toLowerCase());
+      let snippet;
+      if(idx >= 0){
+        const start = Math.max(0, idx-60);
+        const end = Math.min(s.transcript.length, idx+q.length+80);
+        snippet = (start>0?'…':'') + s.transcript.slice(start, end) + (end<s.transcript.length?'…':'');
+      } else {
+        snippet = s.transcript.slice(0,140) + (s.transcript.length>140?'…':'');
+      }
+      html += `<div class="result-card" data-id="${s.id}">
+        <div class="title"><span>${highlight(s.title,q)}</span><span>${fmtDate(s.date)}</span></div>
+        <div class="snippet">${highlight(snippet, q)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+    mainContentEl.innerHTML = html;
+    mainContentEl.querySelectorAll('.result-card').forEach(card => {
+      card.addEventListener('click', () => {
+        activeId = card.dataset.id;
+        searchInput.value = '';
+        render();
+      });
+    });
+  }
+
+  function render(){
+    renderSidebar();
+    const q = searchInput.value.trim();
+    if(q){
+      renderSearch(q);
+      return;
+    }
+    const s = sessions.find(x => x.id === activeId);
+    if(s) renderSession(s);
+    else renderEmptyState();
+  }
+
+  searchInput.addEventListener('input', render);
+  newSessionBtn.addEventListener('click', newSession);
+
+  // Speech recognition
+  function setupRecognition(){
+    if(!sttSupported) return null;
+    const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new R();
+    r.continuous = true;
+    r.interimResults = false;
+    r.lang = 'en-US';
+    r.onresult = (e) => {
+      let s = sessions.find(x => x.id === activeId);
+      if(!s){
+        s = { id: uid(), title:'Untitled session', date: new Date().toISOString(), transcript:'' };
+        sessions.unshift(s);
+        activeId = s.id;
+      }
+      let finalText = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        if(e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+      }
+      if(finalText.trim()){
+        s.transcript = (s.transcript ? s.transcript + ' ' : '') + finalText.trim();
+        persist();
+        if(!searchInput.value.trim()) render();
+      }
+    };
+    r.onerror = (e) => {
+      console.error('speech recognition error', e.error);
+      stopRecording();
+    };
+    r.onend = () => {
+      if(recognizing){
+        try{ r.start(); }catch(e){}
+      }
+    };
+    return r;
+  }
+
+  function startRecording(){
+    if(!sttSupported){
+      alert("This browser doesn't support live dictation. Try Chrome, or just type/paste your transcript directly into a session.");
+      return;
+    }
+    if(!activeId){ newSession(); }
+    if(!recognition) recognition = setupRecognition();
+    recognizing = true;
+    try{ recognition.start(); }catch(e){}
+    recordBtn.classList.add('recording');
+    recordLabel.innerHTML = 'Listening <span class="waveform"><span></span><span></span><span></span><span></span><span></span></span>';
+  }
+  function stopRecording(){
+    recognizing = false;
+    if(recognition){ try{ recognition.stop(); }catch(e){} }
+    recordBtn.classList.remove('recording');
+    recordLabel.textContent = 'Record';
+  }
+  recordBtn.addEventListener('click', () => {
+    if(recognizing) stopRecording(); else startRecording();
+  });
+
+  (async function init(){
+    await load();
+    render();
+  })();
+})();
+</script>
+</body>
+</html>
