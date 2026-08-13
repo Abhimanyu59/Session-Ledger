@@ -363,15 +363,15 @@
 
   async function load(){
     try{
-      const res = await window.storage.get(STORE_KEY, false);
-      sessions = res && res.value ? JSON.parse(res.value) : [];
+      const raw = localStorage.getItem(STORE_KEY);
+      sessions = raw ? JSON.parse(raw) : [];
     }catch(e){
       sessions = [];
     }
     if(sessions.length && !activeId) activeId = sessions[0].id;
   }
   async function persist(){
-    try{ await window.storage.set(STORE_KEY, JSON.stringify(sessions), false); }
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(sessions)); }
     catch(e){ console.error('save failed', e); }
   }
 
