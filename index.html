@@ -299,6 +299,17 @@
   }
 
   .top-actions{display:flex; gap:8px; align-items:center;}
+  #speakerInput{
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:11px 12px;
+    border-radius:3px;
+    font-family:inherit;
+    font-size:13px;
+    width:140px;
+  }
+  #speakerInput:focus{outline:1px solid var(--gold); border-color:var(--gold);}
 </style>
 </head>
 <body>
@@ -317,6 +328,7 @@
         <input id="searchInput" type="text" placeholder="Search everything you've ever said…" autocomplete="off">
       </div>
       <div class="top-actions">
+        <input id="speakerInput" type="text" placeholder="Speaker (optional)" autocomplete="off">
         <button class="btn-record" id="recordBtn">
           <span class="dot"></span> <span id="recordLabel">Record</span>
         </button>
@@ -340,6 +352,7 @@
   const mainContentEl = document.getElementById('mainContent');
   const searchInput = document.getElementById('searchInput');
   const recordBtn = document.getElementById('recordBtn');
+  const speakerInput = document.getElementById('speakerInput');
   const recordLabel = document.getElementById('recordLabel');
   const newSessionBtn = document.getElementById('newSessionBtn');
 
@@ -534,8 +547,15 @@
       for(let i = e.resultIndex; i < e.results.length; i++){
         if(e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
       }
-      if(finalText.trim()){
-        s.transcript = (s.transcript ? s.transcript + ' ' : '') + finalText.trim();
+      finalText = finalText.trim();
+      if(finalText){
+        // Light punctuation heuristic: the browser's recognizer doesn't add
+        // punctuation, so treat each detected pause as a sentence and close it.
+        if(!/[.?!]$/.test(finalText)) finalText += '.';
+        finalText = finalText.charAt(0).toUpperCase() + finalText.slice(1);
+        const speaker = speakerInput.value.trim();
+        const line = speaker ? `${speaker}: ${finalText}` : finalText;
+        s.transcript = (s.transcript ? s.transcript + '\n' : '') + line;
         persist();
         if(!searchInput.value.trim()) render();
       }
